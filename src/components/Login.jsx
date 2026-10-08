@@ -1,20 +1,40 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
+import { apiRequest } from "../services/api";
 import "./Login.css";
 
-function Login() {
+function Login({ register = false }) {
+  const isRegister = register;
+  const [name, setName] = useState("");
+  const [role, setRole] = useState("customer");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const { user, loading, establishSession } = useAuth();
+  const location = useLocation();
   const navigate = useNavigate();
 
-  const handleLogin = (e) => {
-    e.preventDefault();
+  if (loading) return <main className="login-page"><p role="status">Checking your session…</p></main>;
+  if (user) return <Navigate to={user.role === "seller" ? "/seller-dashboard" : user.role === "admin" ? "/admin" : "/"} replace />;
 
-    // Temporary login.
-    // We will connect this to MongoDB later.
-    if (email && password) {
-      navigate("/seller-dashboard");
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
+    setSubmitting(true);
+    try {
+      const result = await apiRequest(`/auth/${isRegister ? "register" : "login"}`, {
+        method: "POST",
+        body: JSON.stringify(isRegister ? { name, email, password, role } : { email, password }),
+      });
+      establishSession(result);
+      const destination = result.role === "seller" ? "/seller-dashboard" : result.role === "admin" ? "/admin" : "/";
+      navigate(location.state?.from || destination, { replace: true });
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -28,14 +48,25 @@ function Login() {
         </div>
 
         {/* Heading */}
-        <h1>Welcome Back</h1>
+        <h1>{isRegister ? "Create your account" : "Welcome Back"}</h1>
 
         <p className="login-subtitle">
-          Login to your AdSpot account
+          {isRegister ? "Join AdSpot Rwanda" : "Login to your AdSpot account"}
         </p>
 
         {/* Login Form */}
-        <form onSubmit={handleLogin}>
+        <form onSubmit={handleSubmit}>
+          {isRegister && (
+            <>
+              <label htmlFor="name">Full name</label>
+              <input id="name" type="text" placeholder="Your name" value={name} onChange={(event) => setName(event.target.value)} minLength={2} required />
+              <label htmlFor="role">Account type</label>
+              <select id="role" value={role} onChange={(event) => setRole(event.target.value)}>
+                <option value="customer">Customer</option>
+                <option value="seller">Seller</option>
+              </select>
+            </>
+          )}
 
           <label htmlFor="email">
             Email
@@ -64,7 +95,7 @@ function Login() {
           />
 
           {/* Remember + Forgot password */}
-          <div className="login-options">
+          {!isRegister && <div className="login-options">
 
             <label className="remember">
               <input type="checkbox" />
@@ -75,39 +106,26 @@ function Login() {
               Forgot password?
             </a>
 
-          </div>
+          </div>}
+
+          {error && <p className="login-error" role="alert">{error}</p>}
 
           {/* Login button */}
           <button
             type="submit"
             className="login-button"
+            disabled={submitting}
           >
-            Login
+            {submitting ? "Please wait…" : isRegister ? "Create account" : "Login"}
           </button>
 
         </form>
 
-        {/* Divider */}
-        <div className="login-divider">
-          <span>OR</span>
-        </div>
-
-        {/* Google button */}
-        <button
-          type="button"
-          className="google-button"
-          onClick={() =>
-            alert("Google login will be connected later")
-          }
-        >
-          Continue with Google
-        </button>
-
         {/* Sign up */}
         <p className="signup-text">
-          Don't have an account?{" "}
-          <Link to="/signup">
-            Create an account
+          {isRegister ? "Already have an account? " : "Don't have an account? "}
+          <Link to={isRegister ? "/login" : "/signup"}>
+            {isRegister ? "Login" : "Create an account"}
           </Link>
         </p>
 

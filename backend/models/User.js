@@ -1,4 +1,3 @@
-```javascript
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 
@@ -22,6 +21,7 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: true,
       minlength: 6,
+      select: false,
     },
 
     role: {
@@ -29,79 +29,40 @@ const userSchema = new mongoose.Schema(
       enum: ["customer", "seller", "admin"],
       default: "customer",
     },
-
-    phone: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    avatar: {
-      type: String,
-      default: "",
-    },
-
-    isActive: {
-      type: Boolean,
-      default: true,
-    },
-
-    addresses: [
-      {
-        label: {
-          type: String,
-          default: "",
-        },
-        district: {
-          type: String,
-          default: "",
-        },
-        sector: {
-          type: String,
-          default: "",
-        },
-        street: {
-          type: String,
-          default: "",
-        },
-        details: {
-          type: String,
-          default: "",
-        },
-      },
-    ],
-
-    favorites: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Product",
-      },
-    ],
-
-    store: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Store",
-    },
+    phone: { type: String, trim: true, default: "" },
+    address: { type: String, trim: true, default: "" },
+    city: { type: String, trim: true, default: "" },
+    country: { type: String, trim: true, default: "Rwanda" },
+    province: { type: String, trim: true, default: "" },
+    district: { type: String, trim: true, default: "" },
+    sector: { type: String, trim: true, default: "" },
+    isActive: { type: Boolean, default: true },
+    cart: [{
+      product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
+      quantity: { type: Number, min: 1, required: true },
+    }],
   },
   {
     timestamps: true,
   }
 );
 
-// Hash password before saving
 userSchema.pre("save", async function () {
-  if (!this.isModified("password")) {
-    return;
-  }
-
-  const salt = await bcrypt.genSalt(10);
-  this.password = await bcrypt.hash(this.password, salt);
+  if (!this.isModified("password")) return;
+  this.password = await bcrypt.hash(this.password, 10);
 });
 
-// Compare entered password with hashed password
-userSchema.methods.matchPassword = async function (enteredPassword) {
-  return bcrypt.compare(enteredPassword, this.password);
+userSchema.methods.comparePassword = async function (password) {
+  return bcrypt.compare(password, this.password);
 };
 
+userSchema.methods.matchPassword = userSchema.methods.comparePassword;
+
+userSchema.set("toJSON", {
+  transform(_document, value) {
+    delete value.password;
+    return value;
+  },
+});
+
 module.exports = mongoose.model("User", userSchema);
-```

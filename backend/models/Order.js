@@ -29,9 +29,11 @@ const orderSchema = new mongoose.Schema(
     deliveryAddress: {
       fullName: String,
       phone: String,
+      province: String,
       district: String,
       sector: String,
       details: String,
+      instructions: String,
     },
     paymentStatus: {
       type: String,

@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { formatRwf, sampleProducts, useSellerData } from "../services/sellerData";
+import { apiRequest, useOrders, useProducts } from "../services/api";
+import { useAuth } from "../context/AuthContext";
 import "./SellerPages.css";
 
 const categories = ["Fashion", "Electronics", "Phones", "Computers", "Beauty", "Home & Living", "Sports", "Accessories", "Other"];
@@ -14,6 +16,7 @@ function Notice({ message, onClose }) {
 }
 
 function SellerLayout({ title, children }) {
+  const { user, logout } = useAuth();
   const links = [
     ["Dashboard", "/seller-dashboard", "▦"],
     ["Products", "/seller-dashboard/products", "□"],
@@ -24,7 +27,7 @@ function SellerLayout({ title, children }) {
     ["Advertising", "/seller-dashboard/advertising", "◈"],
     ["Settings", "/seller-dashboard", "⚙"],
   ];
-  return <div className="sp-shell"><aside className="sp-sidebar"><Link to="/" className="sp-logo"><span>A</span> AdSpot<span className="sp-logo-dot">.</span></Link><small className="sp-nav-label">SELLER WORKSPACE</small><nav>{links.map(([label, to, icon]) => <Link key={label} to={to} className={`sp-nav-link ${title === label || (title === "Edit Product" && label === "Products") || (title === "Order Details" && label === "Orders") || (title === "Campaign Details" && label === "Advertising") || (title === "Create Advertisement" && label === "Advertising") ? "active" : ""}`}><span>{icon}</span>{label}</Link>)}</nav><div className="sp-sidebar-bottom"><div className="sp-support"><strong>Need a hand?</strong><p>Our seller team is here to help.</p><a href="mailto:support@adspot.rw">Contact support</a></div><Link className="sp-nav-link" to="/"><span>↪</span>Logout</Link></div></aside><div className="sp-main"><header className="sp-header"><div><small>Seller workspace</small><strong>{title}</strong></div><label className="sp-search"><span>⌕</span><input placeholder="Search this page" aria-label="Search this page" /></label><button className="sp-icon-button" type="button" aria-label="Notifications">♧</button><div className="sp-user"><span>JM</span><strong>Jean Mukamana<small>Store owner</small></strong></div></header><main className="sp-content">{children}<footer className="sp-footer">© 2026 AdSpot Rwanda <span>Made for local businesses, with care.</span></footer></main></div></div>;
+  return <div className="sp-shell"><aside className="sp-sidebar"><Link to="/" className="sp-logo"><span>A</span> AdSpot<span className="sp-logo-dot">.</span></Link><small className="sp-nav-label">SELLER WORKSPACE</small><nav>{links.map(([label, to, icon]) => <Link key={label} to={to} className={`sp-nav-link ${title === label || (title === "Edit Product" && label === "Products") || (title === "Order Details" && label === "Orders") || (title === "Campaign Details" && label === "Advertising") || (title === "Create Advertisement" && label === "Advertising") ? "active" : ""}`}><span>{icon}</span>{label}</Link>)}</nav><div className="sp-sidebar-bottom"><div className="sp-support"><strong>Need a hand?</strong><p>Our seller team is here to help.</p><a href="mailto:support@adspot.rw">Contact support</a></div><button className="sp-nav-link" type="button" onClick={logout}><span>↪</span>Logout</button></div></aside><div className="sp-main"><header className="sp-header"><div><small>Seller workspace</small><strong>{title}</strong></div><label className="sp-search"><span>⌕</span><input placeholder="Search this page" aria-label="Search this page" /></label><button className="sp-icon-button" type="button" aria-label="Notifications">♧</button><div className="sp-user"><span>{user?.name?.split(" ").map((part) => part[0]).join("").slice(0, 2)}</span><strong>{user?.name}<small>{user?.email}</small></strong></div></header><main className="sp-content">{children}<footer className="sp-footer">© 2026 AdSpot Rwanda <span>Made for local businesses, with care.</span></footer></main></div></div>;
 }
 
 function PageHeading({ eyebrow = "STORE MANAGEMENT", title, description, action }) {
@@ -40,7 +43,7 @@ function StatusPill({ children }) {
 }
 
 export function ProductsPage() {
-  const [products, setProducts] = useSellerData("products");
+  const { products, loading, error, setError } = useProducts("/products/seller/mine");
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All categories");
   const [status, setStatus] = useState("All statuses");
@@ -50,21 +53,23 @@ export function ProductsPage() {
     const matches = `${product.name} ${product.category} ${product.sku || ""}`.toLowerCase().includes(search.toLowerCase());
     return matches && (category === "All categories" || product.category === category) && (status === "All statuses" || product.status === status);
   }), [products, search, category, status]);
-  const removeProduct = (product) => {
-    if (window.confirm(`Delete “${product.name}”?`)) setProducts((current) => current.filter((item) => item.id !== product.id));
+  const removeProduct = async (product) => {
+    if (window.confirm(`Delete “${product.name}”?`)) {
+      try { await apiRequest(`/products/${product.id}`, { method: "DELETE" }); window.location.reload(); }
+      catch (requestError) { setError(requestError.message); }
+    }
   };
   const editProduct = (product) => navigate(`/seller-dashboard/products/edit/${encodeURIComponent(product.id)}`);
-  return <SellerLayout title="Products"><PageHeading title="My Products" description="Manage your inventory, pricing, and product listings." action={<Link className="sp-button sp-button--primary" to="/seller-dashboard/products/add">＋ Add Product</Link>} /><Notice message={notice} onClose={() => { setNotice(""); sessionStorage.removeItem("adspot-product-notice"); }} /><section className="sp-panel"><div className="sp-filters"><label className="sp-search sp-search--inline"><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search products..." /></label><select value={category} onChange={(event) => setCategory(event.target.value)} aria-label="Filter by category"><option>All categories</option>{categories.map((item) => <option key={item}>{item}</option>)}</select><select value={status} onChange={(event) => setStatus(event.target.value)} aria-label="Filter by status"><option>All statuses</option><option>Active</option><option>Out of Stock</option><option>Draft</option></select><span className="sp-result-count">{filtered.length} products</span></div>{filtered.length ? <div className="sp-table-wrap"><table className="sp-table"><thead><tr><th>Product</th><th>Category</th><th>Price</th><th>Stock</th><th>Status</th><th>Date added</th><th>Actions</th></tr></thead><tbody>{filtered.map((product) => <tr key={product.id}><td><div className="sp-product"><img src={product.image || sampleProducts[0].image} alt="" /><span><strong>{product.name}</strong><small>{product.sku || product.id}</small></span></div></td><td>{product.category}</td><td>{formatRwf(product.discountPrice || product.price)}</td><td>{product.stock}</td><td><StatusPill>{product.status || (product.stock ? "Active" : "Out of Stock")}</StatusPill></td><td>{product.dateAdded || "—"}</td><td><div className="sp-actions"><button type="button" onClick={() => editProduct(product)}>Edit</button><button type="button" className="danger" onClick={() => removeProduct(product)}>Delete</button></div></td></tr>)}</tbody></table></div> : <EmptyState title="No products found" text="Try changing your search or filters, or add a product to your store." action={<Link className="sp-button sp-button--primary" to="/seller-dashboard/products/add">Add your first product</Link>} />}</section></SellerLayout>;
+  return <SellerLayout title="Products"><PageHeading title="My Products" description="Manage your inventory, pricing, and product listings." action={<Link className="sp-button sp-button--primary" to="/seller-dashboard/products/add">＋ Add Product</Link>} /><Notice message={notice} onClose={() => { setNotice(""); sessionStorage.removeItem("adspot-product-notice"); }} />{error && <p className="sp-form-error" role="alert">{error}</p>}<section className="sp-panel"><div className="sp-filters"><label className="sp-search sp-search--inline"><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search products..." /></label><select value={category} onChange={(event) => setCategory(event.target.value)} aria-label="Filter by category"><option>All categories</option>{categories.map((item) => <option key={item}>{item}</option>)}</select><select value={status} onChange={(event) => setStatus(event.target.value)} aria-label="Filter by status"><option>All statuses</option><option>Active</option><option>Out of Stock</option><option>Draft</option></select><span className="sp-result-count">{filtered.length} products</span></div>{loading ? <p role="status">Loading products…</p> : filtered.length ? <div className="sp-table-wrap"><table className="sp-table"><thead><tr><th>Product</th><th>Category</th><th>Price</th><th>Stock</th><th>Status</th><th>Date added</th><th>Actions</th></tr></thead><tbody>{filtered.map((product) => <tr key={product.id}><td><div className="sp-product"><img src={product.image} alt="" /><span><strong>{product.name}</strong><small>{product.sku || product.id}</small></span></div></td><td>{product.category}</td><td>{formatRwf(product.discountPrice || product.price)}</td><td>{product.stock}</td><td><StatusPill>{product.status || (product.stock ? "Active" : "Out of Stock")}</StatusPill></td><td>{product.dateAdded || "—"}</td><td><div className="sp-actions"><button type="button" onClick={() => editProduct(product)}>Edit</button><button type="button" className="danger" onClick={() => removeProduct(product)}>Delete</button></div></td></tr>)}</tbody></table></div> : <EmptyState title="No products found" text="Try changing your search or filters, or add a product to your store." action={<Link className="sp-button sp-button--primary" to="/seller-dashboard/products/add">Add your first product</Link>} />}</section></SellerLayout>;
 }
 
 const blankProduct = { name: "", description: "", category: "", subcategory: "", price: "", discountPrice: "", stock: "", sku: "", brand: "", condition: "New", weight: "", tags: "", delivery: "", image: "", status: "Active" };
 
 function ProductForm({ editing = false }) {
   const { id } = useParams();
-  const [products, setProducts] = useSellerData("products");
+  const { products, loading, error, setError } = useProducts("/products/seller/mine");
   const product = editing ? products.find((item) => String(item.id) === decodeURIComponent(id || "")) : null;
   const [form, setForm] = useState(() => product ? { ...blankProduct, ...product, tags: Array.isArray(product.tags) ? product.tags.join(", ") : product.tags || "" } : blankProduct);
-  const [error, setError] = useState("");
   const navigate = useNavigate();
   const change = (event) => setForm((current) => ({ ...current, [event.target.name]: event.target.value }));
   const previewImage = (event) => {
@@ -74,23 +79,44 @@ function ProductForm({ editing = false }) {
     reader.onload = () => setForm((current) => ({ ...current, image: String(reader.result) }));
     reader.readAsDataURL(file);
   };
-  const save = (asDraft = false) => {
+  const save = async (asDraft = false) => {
     if (!asDraft && (!form.name.trim() || !form.category || moneyInput(form.price) <= 0 || form.stock === "")) {
       setError("Please enter a product name, category, valid price, and stock quantity.");
       return;
     }
-    const saved = { ...form, id: product?.id || `P-${Date.now().toString().slice(-6)}`, price: moneyInput(form.price), discountPrice: moneyInput(form.discountPrice), stock: moneyInput(form.stock), tags: String(form.tags || "").split(",").map((tag) => tag.trim()).filter(Boolean), status: asDraft ? "Draft" : moneyInput(form.stock) ? "Active" : "Out of Stock", dateAdded: product?.dateAdded || new Date().toISOString().slice(0, 10), image: form.image || sampleProducts[0].image };
-    setProducts((current) => product ? current.map((item) => item.id === product.id ? saved : item) : [saved, ...current]);
-    sessionStorage.setItem("adspot-product-notice", editing ? "Product changes saved." : asDraft ? "Product saved as a draft." : "Product added successfully.");
-    navigate("/seller-dashboard/products");
-  };
-  const remove = () => {
-    if (product && window.confirm(`Delete “${product.name}”?`)) {
-      setProducts((current) => current.filter((item) => item.id !== product.id));
-      sessionStorage.setItem("adspot-product-notice", "Product deleted.");
+    setError("");
+    try {
+      const payload = {
+        name: form.name.trim(),
+        description: form.description.trim() || form.name.trim(),
+        category: form.category,
+        price: moneyInput(form.price),
+        discountPrice: moneyInput(form.discountPrice) || undefined,
+        stock: moneyInput(form.stock),
+        sku: form.sku,
+        images: form.image ? [form.image] : [],
+        status: asDraft ? "draft" : form.status === "Draft" ? "draft" : "active",
+      };
+      if (editing) await apiRequest(`/products/${product.id}`, { method: "PUT", body: JSON.stringify(payload) });
+      else await apiRequest("/products", { method: "POST", body: JSON.stringify(payload) });
+      sessionStorage.setItem("adspot-product-notice", editing ? "Product changes saved." : asDraft ? "Product saved as a draft." : "Product added successfully.");
       navigate("/seller-dashboard/products");
+    } catch (requestError) {
+      setError(requestError.message);
     }
   };
+  const remove = async () => {
+    if (product && window.confirm(`Delete “${product.name}”?`)) {
+      try {
+        await apiRequest(`/products/${product.id}`, { method: "DELETE" });
+      sessionStorage.setItem("adspot-product-notice", "Product deleted.");
+      navigate("/seller-dashboard/products");
+      } catch (requestError) {
+        setError(requestError.message);
+      }
+    }
+  };
+  if (loading) return <SellerLayout title={editing ? "Edit Product" : "Add Product"}><p role="status">Loading product…</p></SellerLayout>;
   if (editing && !product) return <SellerLayout title="Edit Product"><EmptyState title="Product not found" text="This product may have been removed." action={<Link className="sp-button sp-button--primary" to="/seller-dashboard/products">Back to products</Link>} /></SellerLayout>;
   const field = (label, name, type = "text", props = {}) => <label className="sp-field"><span>{label}{props.required && <i> *</i>}</span><input name={name} type={type} value={form[name] ?? ""} onChange={change} {...props} /></label>;
   return <SellerLayout title={editing ? "Edit Product" : "Add Product"}><PageHeading title={editing ? "Edit Product" : "Add Product"} description={editing ? "Update your product details and listing status." : "Add a new product to your AdSpot store."} /><div className="sp-form-layout"><section className="sp-panel sp-form"><div className="sp-form-section"><h2>Product information</h2><p>Give customers the details they need to make a confident purchase.</p><div className="sp-form-grid"><label className="sp-field sp-field--wide"><span>Product name <i>*</i></span><input name="name" value={form.name} onChange={change} required placeholder="e.g. Classic Leather Tote" /></label><label className="sp-field sp-field--wide"><span>Description</span><textarea name="description" value={form.description} onChange={change} rows="4" placeholder="Describe the product, its materials, and what makes it special." /></label><label className="sp-field"><span>Category <i>*</i></span><select name="category" value={form.category} onChange={change}><option value="">Select category</option>{categories.map((item) => <option key={item}>{item}</option>)}</select></label>{field("Subcategory", "subcategory")}<label className="sp-field"><span>Product condition</span><select name="condition" value={form.condition} onChange={change}><option>New</option><option>Used - like new</option><option>Used - good</option></select></label>{field("Brand", "brand")}</div></div><div className="sp-form-section"><h2>Pricing & inventory</h2><p>Set your pricing and available stock.</p><div className="sp-form-grid">{field("Price (RWF)", "price", "number", { min: "0", required: true, placeholder: "0" })}{field("Discount price (RWF)", "discountPrice", "number", { min: "0", placeholder: "Optional" })}{field("Stock quantity", "stock", "number", { min: "0", required: true, placeholder: "0" })}{field("SKU", "sku", "text", { placeholder: "e.g. MK-BAG-001" })}{field("Weight", "weight", "text", { placeholder: "e.g. 0.8 kg" })}{field("Product tags", "tags", "text", { placeholder: "Separate tags with commas" })}</div></div><div className="sp-form-section"><h2>Delivery information</h2><p>Let buyers know how their order will reach them.</p><label className="sp-field"><span>Delivery details</span><textarea name="delivery" value={form.delivery} onChange={change} rows="2" placeholder="Delivery options, timing, or pickup information" /></label></div>{editing && <div className="sp-form-section"><h2>Listing status</h2><label className="sp-field"><span>Status</span><select name="status" value={form.status} onChange={change}><option>Active</option><option>Out of Stock</option><option>Draft</option></select></label></div>}{error && <p className="sp-form-error" role="alert">{error}</p>}<div className="sp-form-actions"><Link to="/seller-dashboard/products" className="sp-button sp-button--plain">Cancel</Link>{editing && <button type="button" onClick={remove} className="sp-button sp-button--danger">Delete Product</button>}<span />{!editing && <button type="button" onClick={() => save(true)} className="sp-button sp-button--plain">Save as Draft</button>}<button type="button" onClick={() => save(false)} className="sp-button sp-button--primary">{editing ? "Save Changes" : "Save Product"}</button></div></section><aside className="sp-panel sp-image-panel"><h2>Product image</h2><p>Add a clear photo of your product. Image preview is stored in this browser only.</p><label className="sp-image-drop">{form.image ? <img src={form.image} alt="Product preview" /> : <span className="sp-image-placeholder">＋<small>Upload an image</small></span>}<input type="file" accept="image/*" onChange={previewImage} /><small>Choose image</small></label>{field("Or use an image URL", "image", "url", { placeholder: "https://..." })}<div className="sp-preview-info">PNG, JPG or WEBP<br />For best results use a square image.</div></aside></div></SellerLayout>;
@@ -100,22 +126,23 @@ export function AddProductPage() { return <ProductForm />; }
 export function EditProductPage() { return <ProductForm editing />; }
 
 export function OrdersPage() {
-  const [orders, setOrders] = useSellerData("orders");
+  const { orders, loading, error, setError, refresh } = useOrders("/orders/seller");
   const [search, setSearch] = useState("");
   const [delivery, setDelivery] = useState("All order statuses");
   const [payment, setPayment] = useState("All payment statuses");
   const filtered = orders.filter((order) => `${order.id} ${order.customer} ${order.product}`.toLowerCase().includes(search.toLowerCase()) && (delivery === "All order statuses" || order.deliveryStatus === delivery) && (payment === "All payment statuses" || order.paymentStatus === payment));
-  const cycleStatus = (order) => setOrders((current) => current.map((item) => item.id === order.id ? { ...item, deliveryStatus: orderStatuses[(orderStatuses.indexOf(item.deliveryStatus) + 1) % orderStatuses.length] } : item));
-  return <SellerLayout title="Orders"><PageHeading title="Orders" description="Track customer purchases, payment, and delivery status." /><section className="sp-panel"><div className="sp-filters"><label className="sp-search sp-search--inline"><span>⌕</span><input placeholder="Search orders or customers..." value={search} onChange={(event) => setSearch(event.target.value)} /></label><select value={delivery} onChange={(event) => setDelivery(event.target.value)} aria-label="Filter order status"><option>All order statuses</option>{orderStatuses.map((status) => <option key={status}>{status}</option>)}</select><select value={payment} onChange={(event) => setPayment(event.target.value)} aria-label="Filter payment status"><option>All payment statuses</option>{paymentStatuses.map((status) => <option key={status}>{status}</option>)}</select><span className="sp-result-count">{filtered.length} orders</span></div>{filtered.length ? <div className="sp-table-wrap"><table className="sp-table"><thead><tr><th>Order</th><th>Customer</th><th>Product</th><th>Qty</th><th>Total</th><th>Date</th><th>Payment</th><th>Delivery</th><th>Actions</th></tr></thead><tbody>{filtered.map((order) => <tr key={order.id}><td><strong>{order.id}</strong></td><td><span className="sp-customer">{order.customer}<small>{order.phone}</small></span></td><td>{order.product}</td><td>{order.quantity}</td><td>{formatRwf(order.amount)}</td><td>{order.date}</td><td><StatusPill>{order.paymentStatus}</StatusPill></td><td><StatusPill>{order.deliveryStatus}</StatusPill></td><td><div className="sp-actions"><Link to={`/seller-dashboard/orders/${order.id}`}>Details</Link><button type="button" onClick={() => cycleStatus(order)}>Update</button></div></td></tr>)}</tbody></table></div> : <EmptyState title="No orders match" text="Try another search or remove a filter." />}</section></SellerLayout>;
+  const cycleStatus = async (order) => { const next = orderStatuses[(orderStatuses.indexOf(order.deliveryStatus) + 1) % orderStatuses.length]; try { await apiRequest(`/orders/${order._id}/status`, { method: "PATCH", body: JSON.stringify({ status: next.toLowerCase() }) }); refresh(); } catch (requestError) { setError(requestError.message); } };
+  return <SellerLayout title="Orders"><PageHeading title="Orders" description="Track customer purchases, payment, and delivery status." />{error && <p className="sp-form-error" role="alert">{error}</p>}<section className="sp-panel"><div className="sp-filters"><label className="sp-search sp-search--inline"><span>⌕</span><input placeholder="Search orders or customers..." value={search} onChange={(event) => setSearch(event.target.value)} /></label><select value={delivery} onChange={(event) => setDelivery(event.target.value)} aria-label="Filter order status"><option>All order statuses</option>{orderStatuses.map((status) => <option key={status}>{status}</option>)}</select><select value={payment} onChange={(event) => setPayment(event.target.value)} aria-label="Filter payment status"><option>All payment statuses</option>{paymentStatuses.map((status) => <option key={status}>{status}</option>)}</select><span className="sp-result-count">{filtered.length} orders</span></div>{loading ? <p role="status">Loading orders…</p> : filtered.length ? <div className="sp-table-wrap"><table className="sp-table"><thead><tr><th>Order</th><th>Customer</th><th>Product</th><th>Qty</th><th>Total</th><th>Date</th><th>Payment</th><th>Delivery</th><th>Actions</th></tr></thead><tbody>{filtered.map((order) => <tr key={order._id}><td><strong>{order.id}</strong></td><td><span className="sp-customer">{order.customer}<small>{order.phone}</small></span></td><td>{order.product}</td><td>{order.quantity}</td><td>{formatRwf(order.amount)}</td><td>{new Date(order.date).toLocaleDateString()}</td><td><StatusPill>{order.paymentStatus}</StatusPill></td><td><StatusPill>{order.deliveryStatus}</StatusPill></td><td><div className="sp-actions"><Link to={`/seller-dashboard/orders/${encodeURIComponent(order._id)}`}>Details</Link><button type="button" onClick={() => cycleStatus(order)}>Update</button></div></td></tr>)}</tbody></table></div> : <EmptyState title="No orders match" text="Try another search or remove a filter." />}</section></SellerLayout>;
 }
 
 export function OrderDetailsPage() {
   const { id } = useParams();
-  const [orders, setOrders] = useSellerData("orders");
-  const order = orders.find((item) => item.id === id);
-  const update = (field, value) => setOrders((current) => current.map((item) => item.id === id ? { ...item, [field]: value } : item));
+  const { orders, loading, error, setError, refresh } = useOrders("/orders/seller");
+  const order = orders.find((item) => item.id === decodeURIComponent(id) || item._id === decodeURIComponent(id));
+  const update = async (field, value) => { if (field !== "deliveryStatus") return; try { await apiRequest(`/orders/${order._id}/status`, { method: "PATCH", body: JSON.stringify({ status: value.toLowerCase() }) }); refresh(); } catch (requestError) { setError(requestError.message); } };
+  if (loading) return <SellerLayout title="Order Details"><p role="status">Loading order…</p></SellerLayout>;
   if (!order) return <SellerLayout title="Order Details"><EmptyState title="Order not found" text="This order could not be found." action={<Link className="sp-button sp-button--primary" to="/seller-dashboard/orders">Back to orders</Link>} /></SellerLayout>;
-  return <SellerLayout title="Order Details"><PageHeading title={`Order ${order.id}`} description={`Placed ${order.date}`} action={<Link className="sp-button sp-button--plain" to="/seller-dashboard/orders">← All orders</Link>} /><div className="sp-detail-grid"><section className="sp-panel"><div className="sp-panel-title"><h2>Order items</h2><StatusPill>{order.deliveryStatus}</StatusPill></div><div className="sp-order-item"><img src={sampleProducts.find((product) => product.id === order.productId)?.image || sampleProducts[0].image} alt="" /><div><strong>{order.product}</strong><small>SKU: {order.productId} · Quantity: {order.quantity}</small></div><strong>{formatRwf(order.subtotal)}</strong></div><div className="sp-total-lines"><div><span>Subtotal</span><strong>{formatRwf(order.subtotal)}</strong></div><div><span>Delivery fee</span><strong>{formatRwf(order.deliveryFee)}</strong></div><div className="sp-total"><span>Total</span><strong>{formatRwf(order.amount)}</strong></div></div><div className="sp-status-controls"><label>Payment status<select value={order.paymentStatus} onChange={(event) => update("paymentStatus", event.target.value)}>{paymentStatuses.map((item) => <option key={item}>{item}</option>)}</select></label><label>Delivery status<select value={order.deliveryStatus} onChange={(event) => update("deliveryStatus", event.target.value)}>{orderStatuses.map((item) => <option key={item}>{item}</option>)}</select></label></div></section><div className="sp-detail-side"><section className="sp-panel"><h2>Customer information</h2><dl className="sp-definition"><dt>Name</dt><dd>{order.customer}</dd><dt>Phone</dt><dd>{order.phone}</dd><dt>Delivery address</dt><dd>KN 5 Rd, Kigali, Rwanda</dd><dt>Payment</dt><dd><StatusPill>{order.paymentStatus}</StatusPill></dd></dl><a className="sp-button sp-button--plain sp-full-button" href={`tel:${order.phone.replaceAll(" ", "")}`}>Contact customer</a></section><section className="sp-panel"><h2>Order timeline</h2><div className="sp-timeline">{(order.timeline?.length ? order.timeline : [{ label: "Order placed", date: order.date, complete: true }, { label: "Payment confirmed", date: order.paymentStatus === "Paid" ? "Payment received" : "Awaiting payment", complete: order.paymentStatus === "Paid" }, { label: "Order delivery", date: order.deliveryStatus, complete: ["Shipped", "Delivered"].includes(order.deliveryStatus) }]).map((item) => <div className={item.complete ? "complete" : ""} key={item.label}><i /><span><strong>{item.label}</strong><small>{item.date}</small></span></div>)}</div></section></div></div></SellerLayout>;
+  return <SellerLayout title="Order Details"><PageHeading title={`Order ${order.id}`} description={`Placed ${new Date(order.date).toLocaleString()}`} action={<Link className="sp-button sp-button--plain" to="/seller-dashboard/orders">← All orders</Link>} />{error && <p className="sp-form-error" role="alert">{error}</p>}<div className="sp-detail-grid"><section className="sp-panel"><div className="sp-panel-title"><h2>Order items</h2><StatusPill>{order.deliveryStatus}</StatusPill></div>{order.items.map((item) => <div className="sp-order-item" key={item.productId}><img src={item.image || ""} alt="" /><div><strong>{item.product}</strong><small>Quantity: {item.quantity}</small></div><strong>{formatRwf(item.price * item.quantity)}</strong></div>)}<div className="sp-total-lines"><div><span>Subtotal</span><strong>{formatRwf(order.subtotal)}</strong></div><div><span>Delivery fee</span><strong>{formatRwf(order.deliveryFee)}</strong></div><div className="sp-total"><span>Total</span><strong>{formatRwf(order.amount)}</strong></div></div><div className="sp-status-controls"><label>Payment status<select value={order.paymentStatus} disabled><option>{order.paymentStatus}</option></select></label><label>Delivery status<select value={order.deliveryStatus} onChange={(event) => update("deliveryStatus", event.target.value)}>{orderStatuses.map((item) => <option key={item}>{item}</option>)}</select></label></div></section><div className="sp-detail-side"><section className="sp-panel"><h2>Customer information</h2><dl className="sp-definition"><dt>Name</dt><dd>{order.customer}</dd><dt>Phone</dt><dd>{order.phone}</dd><dt>Delivery address</dt><dd>{[order.address?.street, order.address?.sector, order.address?.district, order.address?.province].filter(Boolean).join(", ")}</dd><dt>Payment</dt><dd><StatusPill>{order.paymentStatus}</StatusPill></dd></dl><a className="sp-button sp-button--plain sp-full-button" href={`tel:${order.phone.replaceAll(" ", "")}`}>Contact customer</a></section></div></div></SellerLayout>;
 }
 
 function MiniBars({ values, labels, color = "#2a8058" }) {
@@ -125,7 +152,7 @@ function MiniBars({ values, labels, color = "#2a8058" }) {
 
 export function SalesPage() {
   const [range, setRange] = useState("30 days");
-  const [orders] = useSellerData("orders");
+  const { orders } = useOrders("/orders/seller");
   const transactions = orders.map((order) => ({ ...order, tx: `TX-${order.id.slice(-4)}-${order.productId.slice(-3)}` }));
   return <SellerLayout title="Sales"><PageHeading eyebrow="ANALYTICS" title="Sales & Revenue" description="Understand your store performance and seller earnings." action={<select className="sp-range-select" value={range} onChange={(event) => setRange(event.target.value)}><option>Today</option><option>7 days</option><option>30 days</option><option>3 months</option><option>Custom range</option></select>} />
     <div className="sp-sales-metrics">{[["Total revenue", "2,846,500 RWF", "+12.8%"], ["Today's sales", "186,500 RWF", "+6.4%"], ["This week's sales", "624,000 RWF", "+9.1%"], ["This month's sales", "2,846,500 RWF", "+12.8%"], ["Completed orders", "168", "+8.2%"], ["Average order value", "78,420 RWF", "+3.6%"]].map(([label, value, trend]) => <article className="sp-sales-card" key={label}><span>{label}</span><strong>{value}</strong><small>↑ {trend} this period</small></article>)}</div>
@@ -136,14 +163,42 @@ export function SalesPage() {
 }
 
 export function StorePage() {
-  const [store, setStore] = useSellerData("store");
-  const [form, setForm] = useState(store);
+  const emptyStore = { storeName: "", storeSlug: "", description: "", category: "", phone: "", email: "", location: "", address: "", hours: "", instagram: "", facebook: "", logo: "", banner: "" };
+  const [store, setStore] = useState(null);
+  const [form, setForm] = useState(emptyStore);
   const [editing, setEditing] = useState(false);
   const [notice, setNotice] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let active = true;
+    apiRequest("/stores/mine").then((result) => {
+      if (active && result) {
+        const mapped = { ...emptyStore, ...result, storeName: result.name, storeSlug: result.slug, phone: result.contactPhone || "" };
+        setStore(mapped);
+        setForm(mapped);
+      }
+    }).catch((requestError) => { if (active) setError(requestError.message); }).finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, []);
   const update = (event) => setForm((current) => ({ ...current, [event.target.name]: event.target.value }));
   const upload = (event, key) => { const file = event.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = () => setForm((current) => ({ ...current, [key]: String(reader.result) })); reader.readAsDataURL(file); };
-  const save = (event) => { event.preventDefault(); if (!form.storeName.trim()) return; setStore(form); setEditing(false); setNotice("Store profile saved to this browser."); };
-  return <SellerLayout title="My Store"><PageHeading title="My Store" description="Manage your storefront profile and public information." action={<Link className="sp-button sp-button--plain" to={`/store/${form.storeSlug || "maison-kigali"}`} target="_blank">Preview Store ↗</Link>} /><Notice message={notice} onClose={() => setNotice("")} /><div className="sp-store-layout"><form className="sp-panel sp-store-form" onSubmit={save}><div className="sp-panel-title"><div><h2>Store profile</h2><p className="sp-muted">Your store details are shown to shoppers.</p></div>{!editing && <button className="sp-button sp-button--plain" type="button" onClick={() => setEditing(true)}>Edit Store</button>}</div><label className="sp-image-label">Store logo<input type="file" accept="image/*" onChange={(event) => upload(event, "logo")} /><img className="sp-store-logo-preview" src={form.logo} alt="Store logo preview" /></label><label className="sp-image-label">Store cover / banner<input type="file" accept="image/*" onChange={(event) => upload(event, "banner")} /><img className="sp-store-banner-preview" src={form.banner} alt="Store banner preview" /></label><div className="sp-form-grid">{[["Store name", "storeName"], ["Business category", "category"], ["Phone number", "phone"], ["Email", "email"], ["Location", "location"], ["Address", "address"], ["Opening hours", "hours"], ["Instagram", "instagram"], ["Facebook", "facebook"]].map(([label, key]) => <label className="sp-field" key={key}><span>{label}</span><input name={key} value={form[key] || ""} onChange={update} disabled={!editing} /></label>)}<label className="sp-field sp-field--wide"><span>Store description</span><textarea name="description" rows="4" value={form.description || ""} onChange={update} disabled={!editing} /></label></div>{editing && <div className="sp-form-actions"><button type="button" className="sp-button sp-button--plain" onClick={() => { setForm(store); setEditing(false); }}>Cancel</button><span /><button className="sp-button sp-button--primary" type="submit">Save Changes</button></div>}</form><aside className="sp-store-preview"><div className="sp-preview-caption">LIVE STORE PREVIEW</div><div className="sp-public-card"><img className="sp-public-cover" src={form.banner} alt="Store cover" /><div className="sp-public-body"><img className="sp-public-logo" src={form.logo} alt="Store logo" /><h2>{form.storeName || "Your Store Name"}</h2><span className="sp-rating">★★★★★ <small>4.8 (126 reviews)</small></span><p>{form.description}</p><span className="sp-public-location">⌖ {form.location}</span><div className="sp-public-actions"><button type="button" onClick={() => setNotice("Contact details are shown on the public store profile.")}>Contact Store</button><button type="button" onClick={() => setNotice("Store followed in preview mode.")}>♡ Follow</button></div></div></div></aside></div></SellerLayout>;
+  const save = async (event) => {
+    event.preventDefault();
+    if (!form.storeName.trim() || !form.description.trim()) { setError("Store name and description are required."); return; }
+    setError("");
+    const payload = { name: form.storeName, description: form.description, category: form.category, location: form.location, contactPhone: form.phone, email: form.email, logo: form.logo, banner: form.banner };
+    try {
+      const result = await apiRequest(store?._id ? `/stores/${store._id}` : "/stores", { method: store?._id ? "PUT" : "POST", body: JSON.stringify(payload) });
+      const mapped = { ...emptyStore, ...result, storeName: result.name, storeSlug: result.slug, phone: result.contactPhone || "" };
+      setStore(mapped);
+      setForm(mapped);
+      setEditing(false);
+      setNotice("Store saved.");
+    } catch (requestError) { setError(requestError.message); }
+  };
+  if (loading) return <SellerLayout title="My Store"><p role="status">Loading store…</p></SellerLayout>;
+  return <SellerLayout title="My Store"><PageHeading title="My Store" description="Manage your storefront profile and public information." action={store && <Link className="sp-button sp-button--plain" to={`/store/${form.storeSlug}`} target="_blank">Preview Store ↗</Link>} /><Notice message={notice} onClose={() => setNotice("")} />{error && <p className="sp-form-error" role="alert">{error}</p>}<div className="sp-store-layout"><form className="sp-panel sp-store-form" onSubmit={save}><div className="sp-panel-title"><div><h2>Store profile</h2><p className="sp-muted">Your store details are shown to shoppers.</p></div>{!editing && <button className="sp-button sp-button--plain" type="button" onClick={() => setEditing(true)}>{store ? "Edit Store" : "Create Store"}</button>}</div><label className="sp-image-label">Store logo<input type="file" accept="image/*" disabled={!editing} onChange={(event) => upload(event, "logo")} /><img className="sp-store-logo-preview" src={form.logo} alt="Store logo preview" /></label><label className="sp-image-label">Store cover / banner<input type="file" accept="image/*" disabled={!editing} onChange={(event) => upload(event, "banner")} /><img className="sp-store-banner-preview" src={form.banner} alt="Store banner preview" /></label><div className="sp-form-grid">{[["Store name", "storeName"], ["Business category", "category"], ["Phone number", "phone"], ["Email", "email"], ["Location", "location"]].map(([label, key]) => <label className="sp-field" key={key}><span>{label}</span><input name={key} value={form[key] || ""} onChange={update} disabled={!editing} /></label>)}<label className="sp-field sp-field--wide"><span>Store description</span><textarea name="description" rows="4" value={form.description || ""} onChange={update} disabled={!editing} /></label></div>{editing && <div className="sp-form-actions"><button type="button" className="sp-button sp-button--plain" onClick={() => { setForm(store || emptyStore); setEditing(false); }}>Cancel</button><span /><button className="sp-button sp-button--primary" type="submit">Save Changes</button></div>}</form><aside className="sp-store-preview"><div className="sp-preview-caption">LIVE STORE PREVIEW</div><div className="sp-public-card"><img className="sp-public-cover" src={form.banner || ""} alt="Store cover" /><div className="sp-public-body"><img className="sp-public-logo" src={form.logo || ""} alt="Store logo" /><h2>{form.storeName || "Your Store Name"}</h2><p>{form.description}</p><span className="sp-public-location">⌖ {form.location}</span></div></div></aside></div></SellerLayout>;
 }
 
 export function PublicStorePage() {

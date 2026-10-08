@@ -57,8 +57,33 @@
 }
 
 .login-card input[type="email"]:focus,
-.login-card input[type="password"]:focus {
+.login-card input[type="password"]:focus,
+.login-card input[type="text"]:focus,
+.login-card select:focus {
   border-color: #111;
+}
+
+.login-card input[type="text"],
+.login-card select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 14px;
+  border: 1px solid #ddd;
+  border-radius: 9px;
+  margin-bottom: 18px;
+  font-size: 15px;
+  outline: none;
+  background: #fff;
+}
+
+.login-error {
+  color: #b42318;
+  background: #fef3f2;
+  border: 1px solid #fecdca;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 0 0 16px;
+  font-size: 14px;
 }
 
 .login-options {
@@ -102,6 +127,10 @@
   opacity: 0.9;
 }
 
+.login-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
 .login-divider {
   display: flex;
   align-items: center;

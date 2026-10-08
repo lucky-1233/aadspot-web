@@ -17,6 +17,7 @@ const storeSchema = new mongoose.Schema(
       required: true,
     },
     logo: String,
+    banner: String,
     category: String,
     location: String,
     contactPhone: String,

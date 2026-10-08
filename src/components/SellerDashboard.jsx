@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-import { useSellerData } from "../services/sellerData";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { apiRequest, orderFromApi, useOrders, useProducts } from "../services/api";
+import { useAuth } from "../context/AuthContext";
 import "./SellerDashboard.css";
 
 const initialProducts = [
@@ -86,11 +87,20 @@ function Chart() {
 }
 
 function SellerDashboard() {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const [activeSection, setActiveSection] = useState("Dashboard");
   const [search, setSearch] = useState("");
-  const [products, setProducts] = useSellerData("products");
-  const [orders, setOrders] = useSellerData("orders");
+  const { products } = useProducts("/products/seller/mine");
+  const { orders, refresh: refreshOrders } = useOrders("/orders/seller");
+  const [store, setStore] = useState(null);
   const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    apiRequest("/stores/mine").then((result) => { if (active) setStore(result); }).catch((error) => { if (active) showNotice(error.message); });
+    return () => { active = false; };
+  }, []);
 
   const visibleProducts = useMemo(
     () => products.filter((product) => `${product.name} ${product.category}`.toLowerCase().includes(search.toLowerCase())),
@@ -106,41 +116,33 @@ function SellerDashboard() {
     window.setTimeout(() => setNotice(""), 2500);
   };
 
-  const addProduct = () => {
-    const newProduct = {
-      id: `P-${Date.now().toString().slice(-4)}`,
-      name: "New Sample Product",
-      category: "General",
-      price: 50000,
-      stock: 10,
-      status: "Active",
-      image: "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=160&q=80",
-    };
-    setProducts((current) => [newProduct, ...current]);
-    setActiveSection("Products");
-    showNotice("Sample product added. Edit its details when connected to your catalog.");
-  };
+  const addProduct = () => navigate("/seller-dashboard/products/add");
 
   const editProduct = (product) => {
     const name = window.prompt("Product name", product.name);
     if (name?.trim()) {
-      setProducts((current) => current.map((item) => item.id === product.id ? { ...item, name: name.trim() } : item));
+      apiRequest(`/products/${product.id}`, { method: "PUT", body: JSON.stringify({ name: name.trim() }) })
+        .then(() => window.location.reload())
+        .catch((error) => showNotice(error.message));
     }
   };
 
   const deleteProduct = (product) => {
     if (window.confirm(`Delete ${product.name}?`)) {
-      setProducts((current) => current.filter((item) => item.id !== product.id));
+      apiRequest(`/products/${product.id}`, { method: "DELETE" })
+        .then(() => window.location.reload())
+        .catch((error) => showNotice(error.message));
     }
   };
 
-  const updateOrder = (orderId) => {
-    setOrders((current) => current.map((order) => {
-      if (order.id !== orderId) return order;
-      const currentStatus = order.deliveryStatus || order.status || "Processing";
-      const nextStatus = currentStatus === "Processing" ? "Shipped" : currentStatus === "Shipped" ? "Delivered" : "Processing";
-      return { ...order, deliveryStatus: nextStatus, status: nextStatus };
-    }));
+  const updateOrder = async (orderId) => {
+    const order = orders.find((item) => item.id === orderId);
+    if (!order) return;
+    const nextStatus = order.deliveryStatus === "Processing" ? "Shipped" : order.deliveryStatus === "Shipped" ? "Delivered" : "Processing";
+    try {
+      await apiRequest(`/orders/${order._id}/status`, { method: "PATCH", body: JSON.stringify({ status: nextStatus.toLowerCase() }) });
+      refreshOrders();
+    } catch (error) { showNotice(error.message); }
   };
 
   const renderOrders = (rows) => (
@@ -177,26 +179,22 @@ function SellerDashboard() {
   const renderOverview = () => (
     <>
       <div className="seller-metrics">
-        <article className="seller-metric"><span className="seller-metric__icon seller-metric__icon--orange">↗</span><span className="seller-metric__label">Total Sales</span><strong>{formatRwf(2846500)}</strong><small className="seller-positive">↑ 12.8% <span>vs last month</span></small></article>
-        <article className="seller-metric"><span className="seller-metric__icon seller-metric__icon--blue">▤</span><span className="seller-metric__label">Total Orders</span><strong>184</strong><small className="seller-positive">↑ 8.2% <span>vs last month</span></small></article>
-        <article className="seller-metric"><span className="seller-metric__icon seller-metric__icon--purple">□</span><span className="seller-metric__label">Total Products</span><strong>{products.length + 28}</strong><small className="seller-neutral">4 <span>low in stock</span></small></article>
-        <article className="seller-metric"><span className="seller-metric__icon seller-metric__icon--green">◉</span><span className="seller-metric__label">Store Visitors</span><strong>8,492</strong><small className="seller-positive">↑ 18.4% <span>vs last month</span></small></article>
+        <article className="seller-metric"><span className="seller-metric__icon seller-metric__icon--orange">↗</span><span className="seller-metric__label">Order value</span><strong>{formatRwf(orders.reduce((sum, order) => sum + order.amount, 0))}</strong><small className="seller-neutral">Recorded seller orders</small></article>
+        <article className="seller-metric"><span className="seller-metric__icon seller-metric__icon--blue">▤</span><span className="seller-metric__label">Total Orders</span><strong>{orders.length}</strong><small className="seller-neutral">From MongoDB</small></article>
+        <article className="seller-metric"><span className="seller-metric__icon seller-metric__icon--purple">□</span><span className="seller-metric__label">Total Products</span><strong>{products.length}</strong><small className="seller-neutral">{products.filter((product) => product.stock < 5).length} <span>low in stock</span></small></article>
+        <article className="seller-metric"><span className="seller-metric__icon seller-metric__icon--green">◉</span><span className="seller-metric__label">Store Visitors</span><strong>—</strong><small className="seller-neutral">Visitor analytics unavailable</small></article>
       </div>
 
       <section className="seller-panel seller-revenue-panel">
         <div className="seller-panel__heading"><div><h2>Revenue overview</h2><p>Track your store performance over time</p></div><select aria-label="Revenue time period" defaultValue="7 months"><option>7 months</option><option>This year</option><option>This month</option></select></div>
-        <div className="seller-chart-total"><strong>{formatRwf(2846500)}</strong><span className="seller-positive">↑ 12.8%</span><small>Total revenue</small></div>
+        <div className="seller-chart-total"><strong>{formatRwf(orders.reduce((sum, order) => sum + order.amount, 0))}</strong><small>Order value</small></div>
         <Chart />
       </section>
 
       <div className="seller-overview-grid">
         <section className="seller-panel"><div className="seller-panel__heading"><div><h2>Recent orders</h2><p>Your latest customer orders</p></div><button className="seller-text-button" type="button" onClick={() => setActiveSection("Orders")}>View all</button></div>{renderOrders(orders.slice(0, 3))}</section>
         <section className="seller-panel seller-top-products"><div className="seller-panel__heading"><div><h2>Top selling products</h2><p>Best performers this month</p></div><button type="button" className="seller-icon-button" aria-label="More top products">···</button></div>
-          {[
-            { name: "Classic Leather Tote", count: "86 sold", revenue: 675100, image: initialProducts[0].image },
-            { name: "Wireless Studio Headphones", count: "64 sold", revenue: 716800, image: initialProducts[1].image },
-            { name: "Minimal Wrist Watch", count: "42 sold", revenue: 386400, image: initialProducts[3].image },
-          ].map((product, index) => <div className="seller-top-product" key={product.name}><span className="seller-top-product__rank">0{index + 1}</span><img src={product.image} alt="" /><span className="seller-top-product__name"><strong>{product.name}</strong><small>{product.count}</small></span><strong className="seller-top-product__revenue">{formatRwf(product.revenue)}</strong></div>)}
+          {products.slice(0, 3).map((product, index) => <div className="seller-top-product" key={product.id}><span className="seller-top-product__rank">0{index + 1}</span><img src={product.image || ""} alt="" /><span className="seller-top-product__name"><strong>{product.name}</strong><small>{product.stock} in stock</small></span><strong className="seller-top-product__revenue">{formatRwf(product.price)}</strong></div>)}
         </section>
       </div>
     </>
@@ -206,7 +204,7 @@ function SellerDashboard() {
     if (activeSection === "Products") return <section className="seller-panel"><div className="seller-panel__heading"><div><h2>Products</h2><p>Manage your store inventory</p></div><button className="seller-primary-button" type="button" onClick={addProduct}>＋ Add Product</button></div>{renderProducts(visibleProducts)}</section>;
     if (activeSection === "Orders") return <section className="seller-panel"><div className="seller-panel__heading"><div><h2>Orders</h2><p>Review and update customer orders</p></div><span className="seller-count-tag">{orders.length} recent</span></div>{renderOrders(visibleOrders)}</section>;
     if (activeSection === "Sales") return <><div className="seller-page-intro"><h2>Sales & revenue</h2><p>Monitor sales performance for your store.</p></div>{renderOverview()}</>;
-    if (activeSection === "My Store") return <section className="seller-panel seller-store-panel"><div className="seller-panel__heading"><div><h2>My Store</h2><p>Manage your public storefront information</p></div><button className="seller-primary-button" type="button" onClick={() => showNotice("Store editing is ready to connect to your account settings.")}>Edit Store</button></div><div className="seller-store-profile"><div className="seller-store-logo">M</div><div><h3>Maison Kigali</h3><span className="seller-status seller-status--delivered">Store open</span></div></div><p className="seller-store-description">Curated everyday essentials, fashion finds and thoughtful accessories from local and international makers. Proudly serving Kigali and beyond.</p><div className="seller-store-details"><div><span>Phone</span><strong>+250 788 245 190</strong></div><div><span>Email</span><strong>hello@maisonkigali.rw</strong></div><div><span>Location</span><strong>KN 4 Ave, Kigali, Rwanda</strong></div></div></section>;
+    if (activeSection === "My Store") return <section className="seller-panel seller-store-panel"><div className="seller-panel__heading"><div><h2>My Store</h2><p>Manage your public storefront information</p></div><button className="seller-primary-button" type="button" onClick={() => navigate("/seller-dashboard/store")}>{store ? "Edit Store" : "Create Store"}</button></div>{store ? <><div className="seller-store-profile"><div className="seller-store-logo">{store.name[0]}</div><div><h3>{store.name}</h3><span className="seller-status seller-status--delivered">Store open</span></div></div><p className="seller-store-description">{store.description}</p><div className="seller-store-details"><div><span>Phone</span><strong>{store.contactPhone}</strong></div><div><span>Email</span><strong>{store.email}</strong></div><div><span>Location</span><strong>{store.location}</strong></div></div></> : <p>Create your store profile to begin listing products.</p>}</section>;
     if (activeSection === "Advertising") return <section className="seller-panel"><div className="seller-panel__heading"><div><h2>Advertising</h2><p>Promote products and reach more shoppers</p></div><button className="seller-primary-button" type="button" onClick={() => showNotice("Advertisement draft created.")}>＋ Create Advertisement</button></div><div className="seller-ad-list"><div className="seller-ad-row seller-ad-row--head"><span>Advertisement</span><span>Placement</span><span>Views</span><span>Clicks</span><span>Status</span></div>{[{ name: "October essentials campaign", placement: "Homepage feature", views: "12,480", clicks: "846", status: "Active" }, { name: "New season accessories", placement: "Category promotion", views: "8,210", clicks: "532", status: "Active" }, { name: "Weekend store spotlight", placement: "Search results", views: "3,940", clicks: "196", status: "Paused" }].map((ad) => <div className="seller-ad-row" key={ad.name}><strong>{ad.name}</strong><span>{ad.placement}</span><span>{ad.views}</span><span>{ad.clicks}</span><span className={`seller-status ${ad.status === "Active" ? "seller-status--delivered" : "seller-status--processing"}`}>{ad.status}</span></div>)}</div></section>;
     if (activeSection === "Settings") return <section className="seller-panel"><div className="seller-panel__heading"><div><h2>Settings</h2><p>Manage your seller account preferences</p></div></div><div className="seller-settings"><label>Store notifications <input type="checkbox" defaultChecked /></label><label>Order email alerts <input type="checkbox" defaultChecked /></label><label>Weekly performance report <input type="checkbox" /></label></div></section>;
     return renderOverview();
@@ -220,11 +218,11 @@ function SellerDashboard() {
         <nav className="seller-nav" aria-label="Seller dashboard navigation">
           {navItems.map((item) => <Link to={item.to} key={item.label} className={`seller-nav__item ${item.label === "Dashboard" && activeSection === "Dashboard" ? "is-active" : ""}`}><span className="seller-nav__icon">{item.icon}</span>{item.label}{item.label === "Orders" && <span className="seller-nav__badge">{orders.length}</span>}</Link>)}
         </nav>
-        <div className="seller-sidebar__bottom"><div className="seller-help-card"><span>Need a hand?</span><p>Our seller team is here to help you grow.</p><button type="button" onClick={() => showNotice("Seller support: support@adspot.rw")}>Contact support</button></div><Link className="seller-nav__item seller-logout" to="/"><span className="seller-nav__icon">↪</span>Logout</Link></div>
+        <div className="seller-sidebar__bottom"><div className="seller-help-card"><span>Need a hand?</span><p>Our seller team is here to help you grow.</p><button type="button" onClick={() => showNotice("Seller support: support@adspot.rw")}>Contact support</button></div><button className="seller-nav__item seller-logout" type="button" onClick={logout}><span className="seller-nav__icon">↪</span>Logout</button></div>
       </aside>
 
       <div className="seller-main">
-        <header className="seller-header"><div className="seller-header__title"><span>Seller workspace</span><strong>{activeSection}</strong></div><label className="seller-search"><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search dashboard..." aria-label="Search dashboard" /><kbd>⌘ K</kbd></label><button type="button" className="seller-notification" aria-label="Notifications">♧<i /></button><div className="seller-profile"><div className="seller-avatar">JM</div><span><strong>Jean Mukamana</strong><small>Store owner</small></span><span className="seller-profile__chevron">⌄</span></div></header>
+        <header className="seller-header"><div className="seller-header__title"><span>Seller workspace</span><strong>{activeSection}</strong></div><label className="seller-search"><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search dashboard..." aria-label="Search dashboard" /><kbd>⌘ K</kbd></label><button type="button" className="seller-notification" aria-label="Notifications">♧<i /></button><div className="seller-profile"><div className="seller-avatar">{user?.name?.split(" ").map((part) => part[0]).join("").slice(0, 2)}</div><span><strong>{user?.name}</strong><small>{store?.name || "Seller account"}</small></span><span className="seller-profile__chevron">⌄</span></div></header>
         <main className="seller-content"><div className="seller-welcome"><div><p className="seller-date">THURSDAY, OCTOBER 1, 2026</p><h1>{activeSection === "Dashboard" ? "Good morning, Jean 👋" : activeSection}</h1><p>{activeSection === "Dashboard" ? "Here's what's happening with your store today." : `Manage your ${activeSection.toLowerCase()} and keep your store running smoothly.`}</p></div>{activeSection === "Dashboard" && <button type="button" className="seller-outline-button" onClick={() => setActiveSection("Products")}>View store <span>↗</span></button>}</div>
           {notice && <div className="seller-notice" role="status">{notice}</div>}
           {renderContent()}

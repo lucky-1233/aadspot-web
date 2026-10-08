@@ -16,15 +16,18 @@ const protect = async (req, res, next) => {
   }
 
   try {
+    if (!process.env.JWT_SECRET) {
+      return res.status(500).json({ message: 'Authentication is not configured on the server.' });
+    }
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.user = await User.findById(decoded.id).select('-password');
 
-    if (!req.user) {
-      return res.status(401).json({ message: 'User not found' });
+    if (!req.user || !req.user.isActive) {
+      return res.status(401).json({ message: 'User account is unavailable.' });
     }
 
     next();
-  } catch (error) {
+  } catch {
     return res.status(401).json({ message: 'Token failed' });
   }
 };

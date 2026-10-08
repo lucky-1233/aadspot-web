@@ -1,4 +1,5 @@
 import { sampleProducts, sampleStore } from "./sellerData";
+import { apiRequest, readSession } from "./api";
 
 export const marketplaceProducts = [
   { id: "1", name: "Nike Air Max", price: 85000, oldPrice: 105000, category: "Fashion", brand: "Nike", rating: 4.8, reviews: 128, badge: "Hot", stock: 14, description: "Iconic comfort and everyday style, available from trusted local sellers.", seller: "Maison Kigali", storeSlug: sampleStore.storeSlug, image: "https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=900&q=80", images: ["https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=900&q=80", "https://images.unsplash.com/photo-1460353581641-37baddab0fa2?auto=format&fit=crop&w=900&q=80"], dateAdded: "2026-09-18", delivery: "Delivery across Rwanda in 1–3 days." },
@@ -29,7 +30,15 @@ export function setLocal(key, value) {
   window.dispatchEvent(new CustomEvent("adspot-storage", { detail: { key, value } }));
 }
 export const getCart = () => getLocal("customer-cart", fallbackCart);
-export const saveCart = (cart) => setLocal("customer-cart", cart);
+export const saveCart = (cart) => {
+  setLocal("customer-cart", cart);
+  if (readSession()?.user?.role === "customer") {
+    apiRequest("/users/me/cart", {
+      method: "PUT",
+      body: JSON.stringify({ items: cart.map(({ productId, quantity }) => ({ productId, quantity })) }),
+    }).catch((error) => window.dispatchEvent(new CustomEvent("adspot:sync-error", { detail: error.message })));
+  }
+};
 export const getWishlist = () => getLocal("customer-wishlist", fallbackWishlist);
 export const saveWishlist = (items) => setLocal("customer-wishlist", items);
 export const getCustomerOrders = () => getLocal("customer-orders", fallbackCustomerOrders);

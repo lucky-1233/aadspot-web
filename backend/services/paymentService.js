@@ -6,6 +6,7 @@ const paymentService = {
       reference: `mock_${Date.now()}`,
       amount: data.amount,
       currency: 'RWF',
+      notice: 'Mock payment only. No funds are collected.',
     };
   },
 

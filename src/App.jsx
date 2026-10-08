@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, Route, Routes, useNavigate } from "react-router-dom";
+import { Link, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import Login from "./components/Login";
 import SellerDashboard from "./components/SellerDashboard";
 import {
@@ -37,6 +37,8 @@ import {
   AdminUsersPage,
 } from "./components/AdminPages";
 import { getCart, getWishlist, saveCart, saveWishlist } from "./services/marketplaceData";
+import { useAuth } from "./context/AuthContext";
+import { useProducts } from "./services/api";
 import "./App.css";
 
 const categories = [
@@ -49,97 +51,6 @@ const categories = [
   "Home",
   "Sports",
   "Automotive",
-];
-
-const products = [
-  {
-    id: 1,
-    name: "Nike Air Max",
-    price: 85000,
-    oldPrice: 105000,
-    category: "Fashion",
-    rating: 4.8,
-    badge: "Hot",
-    image:
-      "https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=900&q=80",
-  },
-  {
-    id: 2,
-    name: "Wireless Headphones",
-    price: 45000,
-    oldPrice: 60000,
-    category: "Electronics",
-    rating: 4.7,
-    badge: "-25%",
-    image:
-      "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=900&q=80",
-  },
-  {
-    id: 3,
-    name: "Premium Backpack",
-    price: 32000,
-    oldPrice: 42000,
-    category: "Fashion",
-    rating: 4.6,
-    badge: "New",
-    image:
-      "https://images.unsplash.com/photo-1553062407-98eeb64c6a62?auto=format&fit=crop&w=900&q=80",
-  },
-  {
-    id: 4,
-    name: "Smart Watch",
-    price: 65000,
-    oldPrice: 80000,
-    category: "Electronics",
-    rating: 4.9,
-    badge: "Top",
-    image:
-      "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=900&q=80",
-  },
-  {
-    id: 5,
-    name: "Running Shoes",
-    price: 55000,
-    oldPrice: 70000,
-    category: "Sports",
-    rating: 4.8,
-    badge: "Sale",
-    image:
-      "https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=900&q=80",
-  },
-  {
-    id: 6,
-    name: "Bluetooth Speaker",
-    price: 38000,
-    oldPrice: 50000,
-    category: "Electronics",
-    rating: 4.5,
-    badge: "Eco",
-    image:
-      "https://images.unsplash.com/photo-1608043152269-423dbba4e7e1?auto=format&fit=crop&w=900&q=80",
-  },
-  {
-    id: 7,
-    name: "Modern Sunglasses",
-    price: 25000,
-    oldPrice: 34000,
-    category: "Beauty",
-    rating: 4.4,
-    badge: "Fresh",
-    image:
-      "https://images.unsplash.com/photo-1577803947579-9f8c1f3e3f6d?auto=format&fit=crop&w=900&q=80",
-  },
-  {
-    id: 8,
-    name: "Gaming Controller",
-    price: 48000,
-    oldPrice: 62000,
-    category: "Electronics",
-    rating: 4.9,
-    badge: "Pro",
-    image:
-      "https://images.unsplash.com/photo-1606144042614-b2417e99c4e3?auto=format&fit=crop&w=900&q=80",
-  },
 ];
 
 function SearchIcon() {
@@ -192,8 +103,10 @@ function CartIcon() {
 
 function HomePage() {
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [search, setSearch] = useState("");
+  const { products, error: productsError } = useProducts();
   const [cartCount, setCartCount] = useState(() => getCart().reduce((total, item) => total + item.quantity, 0));
   const [favorites, setFavorites] = useState(getWishlist);
 
@@ -293,13 +206,20 @@ function HomePage() {
                 )}
               </button>
 
-              <button
+              {user ? <button
                 type="button"
                 className="account-button"
-                onClick={() => navigate("/account")}
+                onClick={() => navigate(user.role === "seller" ? "/seller-dashboard" : user.role === "admin" ? "/admin" : "/account")}
               >
-                Account
-              </button>
+                {user.name}
+              </button> : <button
+                type="button"
+                className="account-button"
+                onClick={() => navigate("/login")}
+              >
+                Login
+              </button>}
+              {user && <button type="button" className="account-button" onClick={() => { logout(); navigate("/"); }}>Logout</button>}
             </div>
           </nav>
         </div>
@@ -496,7 +416,7 @@ function HomePage() {
             </button>
           </div>
 
-          {filteredProducts.length > 0 ? (
+          {productsError ? <div className="empty-state" role="alert"><h3>Products could not be loaded</h3><p>{productsError}</p></div> : filteredProducts.length > 0 ? (
             <div className="product-grid">
               {filteredProducts.map((product) => {
                 const isFavorite = favorites.some((item) => String(item) === String(product.id));
@@ -551,9 +471,7 @@ function HomePage() {
                           {product.price.toLocaleString()} RWF
                         </strong>
 
-                        <span>
-                          {product.oldPrice.toLocaleString()} RWF
-                        </span>
+                        {product.oldPrice > product.price && <span>{product.oldPrice.toLocaleString()} RWF</span>}
                       </div>
 
                       <button
@@ -771,21 +689,19 @@ function HomePage() {
 }
 
 function SignupPage() {
-  return (
-    <main className="login-page">
-      <section className="login-card">
-        <h1>Create your account</h1>
-        <p className="login-subtitle">Join AdSpot Rwanda</p>
-        <p className="signup-text">
-          Registration will be available soon. Already have an account?{" "}
-          <Link to="/login">Login</Link>
-        </p>
-        <Link to="/" className="back-home">
-          ← Back to AdSpot
-        </Link>
-      </section>
-    </main>
-  );
+  return <Login register />;
+}
+
+function ProtectedRoute({ roles }) {
+  const { user, loading } = useAuth();
+  const location = useLocation();
+  if (loading) return <main className="login-page"><p role="status">Checking your session…</p></main>;
+  if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  if (!roles.includes(user.role)) {
+    const destination = user.role === "seller" ? "/seller-dashboard" : user.role === "admin" ? "/admin" : "/";
+    return <Navigate to={destination} replace />;
+  }
+  return <Outlet />;
 }
 
 function App() {
@@ -794,28 +710,33 @@ function App() {
       <Route path="/" element={<HomePage />} />
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<SignupPage />} />
-      <Route path="/seller-dashboard" element={<SellerDashboard />} />
-      <Route path="/seller-dashboard/products" element={<ProductsPage />} />
-      <Route path="/seller-dashboard/products/add" element={<AddProductPage />} />
-      <Route path="/seller-dashboard/products/edit/:id" element={<EditProductPage />} />
-      <Route path="/seller-dashboard/orders" element={<OrdersPage />} />
-      <Route path="/seller-dashboard/orders/:id" element={<OrderDetailsPage />} />
-      <Route path="/seller-dashboard/sales" element={<SalesPage />} />
-      <Route path="/seller-dashboard/store" element={<StorePage />} />
-      <Route path="/seller-dashboard/advertising" element={<AdvertisingPage />} />
-      <Route path="/seller-dashboard/advertising/create" element={<CreateCampaignPage />} />
-      <Route path="/seller-dashboard/advertising/edit/:id" element={<EditCampaignPage />} />
-      <Route path="/seller-dashboard/advertising/:id" element={<CampaignDetailsPage />} />
+      <Route element={<ProtectedRoute roles={["seller"]} />}>
+        <Route path="/seller-dashboard" element={<SellerDashboard />} />
+        <Route path="/seller-dashboard/products" element={<ProductsPage />} />
+        <Route path="/seller-dashboard/products/add" element={<AddProductPage />} />
+        <Route path="/seller-dashboard/products/edit/:id" element={<EditProductPage />} />
+        <Route path="/seller-dashboard/orders" element={<OrdersPage />} />
+        <Route path="/seller-dashboard/orders/:id" element={<OrderDetailsPage />} />
+        <Route path="/seller-dashboard/sales" element={<SalesPage />} />
+        <Route path="/seller-dashboard/store" element={<StorePage />} />
+        <Route path="/seller-dashboard/advertising" element={<AdvertisingPage />} />
+        <Route path="/seller-dashboard/advertising/create" element={<CreateCampaignPage />} />
+        <Route path="/seller-dashboard/advertising/edit/:id" element={<EditCampaignPage />} />
+        <Route path="/seller-dashboard/advertising/:id" element={<CampaignDetailsPage />} />
+      </Route>
+      <Route element={<ProtectedRoute roles={["customer"]} />}>
       <Route path="/account" element={<AccountPage />} />
       <Route path="/account/orders" element={<OrderHistoryPage />} />
       <Route path="/account/orders/:id" element={<CustomerOrderDetailsPage />} />
+      <Route path="/checkout" element={<CheckoutPage />} />
+      <Route path="/order-confirmation/:id" element={<OrderConfirmationPage />} />
+      </Route>
       <Route path="/product/:id" element={<ProductDetailsPage />} />
       <Route path="/cart" element={<CartPage />} />
       <Route path="/wishlist" element={<WishlistPage />} />
-      <Route path="/checkout" element={<CheckoutPage />} />
-      <Route path="/order-confirmation/:id" element={<OrderConfirmationPage />} />
       <Route path="/store/:storeName" element={<MarketplaceStorePage />} />
       <Route path="/search" element={<SearchPage />} />
+      <Route element={<ProtectedRoute roles={["admin"]} />}>
       <Route path="/admin" element={<AdminDashboardPage />} />
       <Route path="/admin/users" element={<AdminUsersPage />} />
       <Route path="/admin/users/:id" element={<AdminEntityDetails type="users" />} />
@@ -826,6 +747,7 @@ function App() {
       <Route path="/admin/orders" element={<AdminOrdersPage />} />
       <Route path="/admin/orders/:id" element={<AdminEntityDetails type="orders" />} />
       <Route path="/admin/analytics" element={<AdminAnalyticsPage />} />
+      </Route>
       <Route path="*" element={<HomePage />} />
     </Routes>
   );
